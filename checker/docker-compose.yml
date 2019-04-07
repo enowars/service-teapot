@@ -6,4 +6,4 @@ services:
     mem_limit: 256m
     mem_reservation: 128m
     ports:
-      - "5000:80"
+      - "4002:80"
