@@ -1,0 +1,9 @@
+version: '2.3'
+services:
+  wasp-checker:
+    build: .
+    tty: true # workaround for https://github.com/docker/compose/issues/3347
+    mem_limit: 256m
+    mem_reservation: 128m
+    ports:
+      - "5000:80"

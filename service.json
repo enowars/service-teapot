@@ -1,0 +1,7 @@
+{
+    "name": "teapot",
+    "ports": [3255],
+    "flagcount": 1,
+    "checkerport": 4002,
+    "description": "I am a Teapot."
+}
