@@ -1,29 +1,20 @@
-#!/usr/bin/env python3
+import time
+import logging
+import sys
+import aiohttp
 import random
-from enochecker import BaseChecker, BrokenServiceException, assert_equals, assert_in, run
+import string
+import json
 
+from enochecker_async import BaseChecker, BrokenServiceException, create_app, OfflineException, ELKFormatter, CheckerTaskMessage
+from logging import LoggerAdapter
+from motor import MotorCollection
 
 class TeapotChecker(BaseChecker):
-    """
-    Change the methods given here, then simply create the class and .run() it.
-    Magic.
+    port = 8004
 
-    A few convenient methods and helpers are provided in the BaseChecker.
-    ensure_bytes ans ensure_unicode to make sure strings are always equal.
-
-    As well as methods:
-    self.connect() connects to the remote server.
-    self.http_get and self.http_post request from http.
-    self.team_db is a dict that stores its contents to filesystem. (call .persist() to make sure)
-    self.readline_expect(): fails if it's not read correctly
-
-    To read the whole docu and find more goodies, run python -m pydoc enolib
-    (Or read the source, Luke)
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.port = 3255  # default port to send requests to.
+    def __init__(self):
+        super(TeapotChecker, self).__init__("Teapot", 8080, 2, 0, 0)
 
     def gen_amount(self):
         return random.randrange(0, 10 ** 6)
@@ -31,39 +22,96 @@ class TeapotChecker(BaseChecker):
     def gen_pot(self):
         return random.randrange(10 ** 31, 10 ** 32)
 
-    def putflag(self):
-        pot = self.gen_pot()
-        self.team_db[self.flag] = pot
-        flag_id = pot
+    async def putflag(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            pot = str(self.gen_pot())
+            await collection.insert_one({ 'flag' : task.flag, 'pot': pot })
 
-        milk, almond, whisky, rum = [self.gen_amount() for i in range(4)]
+            milk, almond, whisky, rum = [self.gen_amount() for i in range(4)]
+            additions = "Whole-milk;%s,Almond;%s,Whisky;%s,Rum;%s,Flag;%s" % (
+                milk, almond, whisky, rum, task.flag)
+            headers = {"Accept-Additions": additions}
 
-        additions = "Whole-milk;%s,Almond;%s,Whisky;%s,Rum;%s,Flag;%s" % (
-            milk, almond, whisky, rum, self.flag)
-        headers = {"Accept-Additions": additions}
+            try:
+                resp = await session.request("BREW", f"http://{task.address}:{TeapotChecker.port}/pot-{pot}", headers=headers)
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"http request failed ({sys.exc_info()[0]})")
+            if "BREWING" not in text:
+                raise BrokenServiceException("Doesn't brew")
 
-        resp = self.http("BREW", "/pot-%s" % (pot), headers=headers)
-        if resp.status_code != 200 or "BREWING" not in resp.text:
-            raise BrokenServiceException("doesn't brew")
+    async def getflag(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            pot = await collection.find_one({ 'flag': task.flag })
+            if pot is None:
+                raise BrokenServiceException("Could not find pot in db")
+            pot = pot["pot"]
+            try:
+                logger.debug(f"PROPFIND http://{task.address}:{TeapotChecker.port}/pot-{pot}")
+                resp = await session.request("PROPFIND", f"http://{task.address}:{TeapotChecker.port}/pot-{pot}")
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"http request failed ({sys.exc_info()[0]})")
+            if task.flag not in text:
+                raise BrokenServiceException(f"Flag not found ({text})")
 
-    def getflag(self):
-        pot = self.team_db[self.flag]
-        resp = self.http("PROPFIND", "/pot-%s" % (pot))
-        assert_equals(200, resp.status_code)
-        assert_in(self.flag, resp.text)
-
-    def putnoise(self):
+    async def putnoise(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
         pass
 
-    def getnoise(self):
-        # TODO: Could need a little more interaction
+    async def getnoise(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
         pass
 
-    def havoc(self):
-        self.info("I wanted to inform you: I'm  running <3")
-        self.http_get("/")  # This will probably fail fail, depending on what params you give the script. :)
+    async def havoc(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            try:
+                resp = await session.get(f"http://{task.address}:{TeapotChecker.port}")
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"Http request failed ({sys.exc_info()[0]})")
+            
+            if "tea" not in text:
+                raise BrokenServiceException(f"No tea in /")
 
+            pot = str(self.gen_pot())
+            milk, almond, whisky, rum, flag = [self.gen_amount() for i in range(5)]
+            additions = "Whole-milk;%s,Almond;%s,Whisky;%s,Rum;%s,Flag;%s" % (
+                milk, almond, whisky, rum, flag)
+            headers = {"Accept-Additions": additions}
 
-app = TeapotChecker.service
-if __name__ == "__main__":
-    run(TeapotChecker)
+            try:
+                resp = await session.request("BREW", f"http://{task.address}:{TeapotChecker.port}/pot-{pot}", headers=headers)
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"http request failed ({sys.exc_info()[0]})")
+            if "BREWING" not in text:
+                raise BrokenServiceException("Doesn't brew")
+
+            addition = random.choice(["Whole-milk", "Almond", "Whisky", "Rum"])
+            headers = {"Addition": addition}
+            try:
+                resp = await session.request("PUT", f"http://{task.address}:{TeapotChecker.port}/pot-{pot}", headers=headers)
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"http request failed ({sys.exc_info()[0]})")
+            if "ADDED" not in text:
+                raise BrokenServiceException("Failed to add ingredient")
+
+            try:
+                logger.debug(f"PROPFIND http://{task.address}:{TeapotChecker.port}/pot-{pot}")
+                resp = await session.request("PROPFIND", f"http://{task.address}:{TeapotChecker.port}/pot-{pot}")
+                text = await resp.text()
+            except:
+                raise BrokenServiceException(f"http request failed ({sys.exc_info()[0]})")
+            for num in (milk+1, almond+1, whisky+1, rum+1):
+                if str(num) in text:
+                    break
+            else:
+                raise BrokenServiceException("Failed to add ingredient (propfind)")
+
+logger = logging.getLogger()
+handler = logging.StreamHandler(sys.stdout)
+#handler.setFormatter(ELKFormatter("%(message)s")) #ELK-ready output
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+app = create_app(TeapotChecker()) # mongodb://mongodb:27017
