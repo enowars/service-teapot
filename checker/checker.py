@@ -110,7 +110,7 @@ class TeapotChecker(BaseChecker):
 
 logger = logging.getLogger()
 handler = logging.StreamHandler(sys.stdout)
-#handler.setFormatter(ELKFormatter("%(message)s")) #ELK-ready output
+handler.setFormatter(ELKFormatter("%(message)s")) #ELK-ready output
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
