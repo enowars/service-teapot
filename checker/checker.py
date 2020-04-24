@@ -24,6 +24,11 @@ class TeapotChecker(BaseChecker):
 
     async def putflag(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
         async with aiohttp.ClientSession(raise_for_status=True) as session:
+            try:
+                resp = await session.get(f"http://{task.address}:{TeapotChecker.port}")
+                text = await resp.text()
+            except:
+                raise OfflineException()
             pot = str(self.gen_pot())
             await collection.insert_one({ 'flag' : task.flag, 'pot': pot })
 
@@ -42,6 +47,11 @@ class TeapotChecker(BaseChecker):
 
     async def getflag(self, logger: LoggerAdapter, task: CheckerTaskMessage, collection: MotorCollection) -> None:
         async with aiohttp.ClientSession(raise_for_status=True) as session:
+            try:
+                resp = await session.get(f"http://{task.address}:{TeapotChecker.port}")
+                text = await resp.text()
+            except:
+                raise OfflineException()
             pot = await collection.find_one({ 'flag': task.flag })
             if pot is None:
                 raise BrokenServiceException("Could not find pot in db")
@@ -67,7 +77,7 @@ class TeapotChecker(BaseChecker):
                 resp = await session.get(f"http://{task.address}:{TeapotChecker.port}")
                 text = await resp.text()
             except:
-                raise BrokenServiceException(f"Http request failed ({sys.exc_info()[0]})")
+                raise OfflineException()
             
             if "tea" not in text:
                 raise BrokenServiceException(f"No tea in /")
