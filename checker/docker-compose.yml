@@ -3,6 +3,6 @@ services:
   teapot-checker:
     build: .
     ports:
-      - 8005:8080
+      - 8004:8080
   mongodb:
     image: mongo
