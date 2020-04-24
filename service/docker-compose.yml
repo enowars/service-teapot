@@ -4,12 +4,8 @@ services:
   teapot:
     build: teapot_service
     volumes:
-      - teapot-data:/home/teapot/pots
+      - ./data:/home/teapot/pots
     hostname: teapot
     container_name: teapot-service
-    restart: on-failure
     ports:
-      - "3255:3255"
-
-volumes:
-  teapot-data:
+      - "8004:3255"

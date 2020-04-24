@@ -13,7 +13,7 @@
 #include "mongoose.h"
 
 #define DOCUMENT_ROOT "."
-#define INDEX_FILE "coffeepot.cgi"
+#define INDEX_FILE "teapot.cgi"
 #define CGI_TIMEOUT 10
 
 static struct mg_http_proto_data *mg_http_get_proto_data(
