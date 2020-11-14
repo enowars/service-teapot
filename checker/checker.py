@@ -14,7 +14,7 @@ class TeapotChecker(BaseChecker):
     port = 8004
 
     def __init__(self):
-        super(TeapotChecker, self).__init__("Teapot", 8080, 2, 0, 0)
+        super(TeapotChecker, self).__init__("Teapot", 8080, 1, 0, 0)
 
     def gen_amount(self):
         return random.randrange(0, 10 ** 6)
